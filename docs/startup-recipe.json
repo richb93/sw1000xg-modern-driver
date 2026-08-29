@@ -1,0 +1,31 @@
+{
+  "schema": 1,
+  "source_driver_sha256": "0e475f6af8a4e23af5d5fd3533533fc50433ae10e98aaab9d96368cda35eb4b4",
+  "purpose": "ordinary SW1000XG non-ASIO DSP baseline for synth-first research",
+  "operations": [
+    {"op":"write32", "offset":"0x3FF00", "value":"0x00000080"},
+    {"op":"write_port1", "value":"0x11A18000"},
+    {"op":"delay_ms", "value":10},
+    {"op":"set_port1_bit", "bit":25, "value":1, "name":"SetMute"},
+    {"op":"set_port1_bit", "bit":23, "value":0, "name":"NResDSP0"},
+    {"op":"delay_ms", "value":44},
+    {"op":"set_port1_bit", "bit":23, "value":1, "name":"NResDSP0"},
+    {"op":"clear_initial_timestamp"},
+    {"op":"mask_port1", "and":"0x3FFFFFFF"},
+    {"op":"write_global_records", "files":["global_register_00.bin","global_register_01.bin","global_register_02.bin","global_register_03.bin","global_register_04.bin"]},
+    {"op":"send_words", "dsp":0, "destination":"0x700", "words":64, "file":"bootstrap_zero_a.bin"},
+    {"op":"send_mpr_bank", "dsp":0, "destination":"0x000", "files":["mpr_00.bin","mpr_01.bin","mpr_02.bin","mpr_03.bin","mpr_04.bin","mpr_05.bin","mpr_06.bin","mpr_07.bin","mpr_08.bin","mpr_09.bin","mpr_10.bin"], "word_counts":[320,320,320,320,160,320,320,64,6,32,64]},
+    {"op":"send_words", "dsp":0, "destination":"0x700", "words":64, "file":"bootstrap_zero_b.bin"},
+    {"op":"send_words", "dsp":0, "destination":"0x800", "words":6, "file":"cescr.bin"},
+    {"op":"set_ram", "address":"0xC100", "value":"0x00000000", "name":"TRWF"},
+    {"op":"set_ram", "address":"0xC101", "value":"0x00000000", "name":"TRWFO"},
+    {"op":"clear_port1_bit", "bit":25},
+    {"op":"set_dsp_word", "window":0, "target_selector":"0x100", "destination":"0xE0", "value":"0x40000000"},
+    {"op":"set_dsp_word", "window":0, "target_selector":"0x700", "destination":"0x0F", "value":"0x147F0020"},
+    {"op":"write_port1", "value":"0xD1A18000"},
+    {"op":"dit", "mode":0, "value":"0x00000204"},
+    {"op":"dit", "mode":1, "value":"0x00000008"},
+    {"op":"dit", "mode":2, "value":"0x00000000"},
+    {"op":"write32", "offset":"0x3FF04", "value":"0x00000000", "name":"IrqDisableAll"}
+  ]
+}
