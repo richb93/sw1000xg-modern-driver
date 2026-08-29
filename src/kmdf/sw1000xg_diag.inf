@@ -1,0 +1,44 @@
+[Version]
+Signature="$WINDOWS NT$"
+Class=MEDIA
+ClassGuid={4d36e96c-e325-11ce-bfc1-08002be10318}
+Provider=%ProviderName%
+DriverVer=08/29/2026,0.1.0.0
+CatalogFile=sw1000xg_diag.cat
+PnpLockdown=1
+
+[Manufacturer]
+%ProviderName%=Models,NTamd64
+
+[Models.NTamd64]
+%DeviceName%=DeviceInstall,PCI\VEN_1073&DEV_1000
+
+[DestinationDirs]
+DefaultDestDir=13
+
+[DeviceInstall.NT]
+CopyFiles=DriverCopy
+
+[DriverCopy]
+sw1000xg_diag.sys
+
+[DeviceInstall.NT.Services]
+AddService=sw1000xg_diag,0x00000002,ServiceInstall
+
+[ServiceInstall]
+DisplayName=%ServiceName%
+ServiceType=1
+StartType=3
+ErrorControl=1
+ServiceBinary=%13%\sw1000xg_diag.sys
+
+[DeviceInstall.NT.Wdf]
+KmdfService=sw1000xg_diag,KmdfSection
+
+[KmdfSection]
+KmdfLibraryVersion=1.33
+
+[Strings]
+ProviderName="SW1000XG Clean Driver Project"
+DeviceName="Yamaha SW1000XG diagnostic initializer"
+ServiceName="SW1000XG diagnostic initializer"
