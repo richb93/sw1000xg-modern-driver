@@ -138,6 +138,21 @@ between edges.
 Ordinary startup therefore serialises `(mode 0, 0x00000204)`, then `(mode 1,
 0x8)`, then `(mode 2, 0)`, leaving clock low and latch high.
 
+## DSP RAM single-value protocol
+
+`SetRAMCore(address, value)` uses DSP window 0 and the same bit-31 busy poll and
+`0xFFFFF` limit as the bulk uploader. Once ready, it performs these writes:
+
+1. `DSP0+0x80 = 0x01010000 + (address >> 16)`
+2. `DSP0+0x00 = value`
+3. `DSP0+0x80 = 0x00010000 + (address >> 16)`
+4. `DSP0+0x84 = (address << 16) + 0x00000F00`
+
+Thus the startup clear of `TRWF` at `0xC100` commits `0xC1000F00`, followed by
+`TRWFO` at `0xC101` committing `0xC1010F00`. This protocol is now implemented
+directly in the platform-neutral core rather than retained as an opaque recipe
+operation.
+
 ## Remaining boundary
 
 The SW1000 `SendCESCR` hook is no longer opaque: it is exactly one six-word
