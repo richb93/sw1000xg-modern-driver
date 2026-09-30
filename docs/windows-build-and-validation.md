@@ -100,10 +100,32 @@ Verifier-clean result does not prove hardware correctness.
 
 ## 7. Trace comparison
 
-Before adding MIDI, add an internal debug trace containing operation index,
-offset, value, and timeout result. Do not expose arbitrary register access to
-user mode. Compare the captured sequence mechanically with
-`docs/startup-recipe.json`; document any hardware-dependent reads separately.
+The `Debug` build records every MMIO write, poll read and delay made by
+startup and prints it to the kernel debugger as `SWXG ...` lines. Nothing is
+exposed to user mode. Before installing, enable the output in the debugger:
+
+```text
+ed nt!Kd_IHVDRIVER_Mask 0xF
+.logopen C:\private\swxg-startup.log
+```
+
+After the device starts, close the log (`.logclose`) and compare it with an
+independent expansion of the recipe:
+
+```text
+py tools\recipe_trace.py compare --extraction work\extracted C:\private\swxg-startup.log
+```
+
+`--extraction` checks every payload word exactly; without it, payload values
+are wildcards. Debugger prefixes on each line are ignored. The tool reports
+the first differing operation, or `OK` with a count of reads (busy polls),
+which are hardware-dependent and not compared. Keep the log private, because
+it contains Yamaha-derived payload values. Do not continue to MIDI work until
+this reports `OK` on repeated cold and warm starts, and after resume (each D0
+entry prints a new trace).
+
+`make test` runs the same comparison on the host against the fake BAR, so the
+C core and the JSON recipe are checked against each other on every change.
 
 ## 8. MIDI milestone
 

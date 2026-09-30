@@ -1,4 +1,5 @@
 #include "../src/hardware/sw1000xg_hw.h"
+#include "../src/hardware/sw1000xg_trace.h"
 #include <assert.h>
 #include <stdio.h>
 
@@ -202,6 +203,41 @@ static void test_complete_startup(void)
             ~SWXG_PORT1_DIT_CLOCK));
 }
 
+static uint32_t busy_countdown;
+
+static uint32_t countdown_read(void *context, uint32_t offset)
+{
+    (void)context;
+    (void)offset;
+    if (busy_countdown == 0)
+        return 0;
+    --busy_countdown;
+    return SWXG_DSP_BUSY;
+}
+
+static void test_trace(void)
+{
+    fake_mmio fake = {0};
+    swxg_io inner = {&fake, countdown_read, fake_write, fake_delay};
+    swxg_trace_entry entries[4];
+    swxg_trace trace;
+    swxg_device device;
+    swxg_trace_init(&trace, inner, entries, 4);
+    swxg_init(&device, swxg_trace_io(&trace));
+    busy_countdown = 5;
+    assert(swxg_set_ram(&device, 0xC100, 7) == SWXG_OK);
+    /* 5 busy polls fold into one entry, then the ready read. */
+    assert(entries[0].kind == SWXG_TRACE_READ);
+    assert(entries[0].value == SWXG_DSP_BUSY && entries[0].repeat == 5);
+    assert(entries[1].kind == SWXG_TRACE_READ && entries[1].value == 0);
+    assert(entries[2].kind == SWXG_TRACE_WRITE);
+    assert(entries[2].offset == SWXG_DSP0 + 0x80);
+    /* Capacity 4: the remaining three writes, one fits, two are dropped. */
+    assert(trace.count == 4 && trace.dropped == 2);
+    /* Every access was still forwarded to the inner io. */
+    assert(fake.count == 4);
+}
+
 int main(void)
 {
     test_chunking();
@@ -212,6 +248,7 @@ int main(void)
     test_dit_32bit_modes();
     test_global();
     test_complete_startup();
+    test_trace();
     puts("sw1000xg_hw tests passed");
     return 0;
 }

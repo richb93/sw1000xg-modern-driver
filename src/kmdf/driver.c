@@ -1,9 +1,11 @@
 #include <ntddk.h>
 #include <wdf.h>
 #include "../hardware/sw1000xg_hw.h"
+#include "../hardware/sw1000xg_trace.h"
 #include "sw1000xg_assets.generated.h"
 
 #define SWXG_MIN_BAR_LENGTH 0x3FF14u
+#define SWXG_TRACE_CAPACITY 4096u
 
 typedef struct DEVICE_CONTEXT {
     PUCHAR Registers;
@@ -11,6 +13,11 @@ typedef struct DEVICE_CONTEXT {
     WDFWAITLOCK HardwareLock;
     swxg_device Core;
     BOOLEAN Initialized;
+#if DBG
+    /* Startup MMIO trace for comparison with docs/startup-recipe.json. */
+    swxg_trace Trace;
+    swxg_trace_entry TraceEntries[SWXG_TRACE_CAPACITY];
+#endif
 } DEVICE_CONTEXT, *PDEVICE_CONTEXT;
 
 WDF_DECLARE_CONTEXT_TYPE_WITH_NAME(DEVICE_CONTEXT, DeviceGetContext)
@@ -46,6 +53,30 @@ static void CoreDelayMs(void *opaque, uint32_t milliseconds)
     interval.QuadPart = -((LONGLONG)milliseconds * 10 * 1000);
     (void)KeDelayExecutionThread(KernelMode, FALSE, &interval);
 }
+
+#if DBG
+/* Prints the trace in the format read by tools/recipe_trace.py. Visible after
+ * "ed nt!Kd_IHVDRIVER_Mask 0xF" in the kernel debugger. */
+static void SwxgDumpTrace(PDEVICE_CONTEXT context, int result)
+{
+    size_t i;
+    for (i = 0; i < context->Trace.count; ++i) {
+        const swxg_trace_entry *e = &context->TraceEntries[i];
+        if (e->kind == SWXG_TRACE_WRITE)
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+                       "SWXG W %05X %08X\n", e->offset, e->value);
+        else if (e->kind == SWXG_TRACE_READ)
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+                       "SWXG R %05X %08X %u\n", e->offset, e->value,
+                       e->repeat);
+        else
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+                       "SWXG D %u\n", e->value);
+    }
+    DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "SWXG END %d %u\n",
+               result, (ULONG)context->Trace.dropped);
+}
+#endif
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
@@ -110,6 +141,11 @@ NTSTATUS SwxgEvtPrepareHardware(WDFDEVICE device, WDFCMRESLIST resourcesRaw,
     io.read32 = CoreRead32;
     io.write32 = CoreWrite32;
     io.delay_ms = CoreDelayMs;
+#if DBG
+    swxg_trace_init(&context->Trace, io, context->TraceEntries,
+                    SWXG_TRACE_CAPACITY);
+    io = swxg_trace_io(&context->Trace);
+#endif
     swxg_init(&context->Core, io);
     return STATUS_SUCCESS;
 }
@@ -128,7 +164,14 @@ NTSTATUS SwxgEvtD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previousState)
     WdfWaitLockAcquire(context->HardwareLock, NULL);
     /* No ISR is connected: keep every interrupt source disabled. */
     CoreWrite32(context, SWXG_TRPIF, 0);
+#if DBG
+    context->Trace.count = 0;
+    context->Trace.dropped = 0;
+#endif
     result = swxg_startup(&context->Core, SwxgGetStartupAssets());
+#if DBG
+    SwxgDumpTrace(context, result);
+#endif
     if (result == SWXG_OK) {
         context->Initialized = TRUE;
         status = STATUS_SUCCESS;
