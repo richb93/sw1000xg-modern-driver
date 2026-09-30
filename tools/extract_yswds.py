@@ -23,7 +23,6 @@ REGIONS = {
         "global_register_02.bin": (0x181DC, 0x0012),
         "global_register_03.bin": (0x1A558, 0x0012),
         "global_register_04.bin": (0x1C8D4, 0x0012),
-        "bootstrap_zero_a.bin": (0x138C0, 0x0100),
         "mpr_00.bin": (0x12DBC, 0x0500),
         "mpr_01.bin": (0x128BC, 0x0500),
         "mpr_02.bin": (0x123BC, 0x0500),
@@ -35,8 +34,6 @@ REGIONS = {
         "mpr_08.bin": (0x13AB4, 0x0018),
         "mpr_09.bin": (0x13A04, 0x0080),
         "mpr_10.bin": (0x13904, 0x0100),
-        # This begins one word before bootstrap_zero_a, as in the original.
-        "bootstrap_zero_b.bin": (0x138BC, 0x0100),
         "cescr.bin": (0x13A84, 0x0018),
     },
     "dsp32_base": {

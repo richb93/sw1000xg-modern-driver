@@ -69,7 +69,7 @@ Confirmed from imports and named routines:
 
 Likely, but not yet proven:
 
-- The PCI device probably exposes one principal MMIO BAR plus one interrupt; the exact resource-list counts and BAR layout need deeper function-level decompilation or observation on hardware.
+- The PCI device exposes one principal MMIO BAR plus one interrupt. Both the adapter and the UART layer map the first translated memory resource; no second BAR is used (confirmed in the second pass).
 - The DMA engine is likely limited to 32-bit physical addresses. The old x86 design and absence of 64-bit DMA handling make this the safe initial assumption, but a real card test or chipset documentation must confirm it.
 - `TRW*`, `TP`, `IA`, `EA`, `APP/APF`, and `ARP/ARF` are DMA ring/transfer address and pointer registers. Their exact semantics and offsets remain unresolved.
 
@@ -230,8 +230,10 @@ The driver keeps a shadow command/control byte for each channel:
 
 - Control bit `0x01`: transmit interrupt/operation enable (`EnableTX` sets it; `DisableTX` clears it).
 - Control bit `0x04`: receive interrupt/operation enable (`EnableRX` sets it; `DisableRX` clears it).
-- Status bit `0x01`: receive-side condition is the leading interpretation from ISR paths, but final assignment needs the complete caller trace.
-- Status bit `0x02`: transmit-ready/empty condition. The UART ISR dequeues one outgoing byte and writes it to `base+0` when this bit is set.
+- Status bit `0x01`: transmit ready. The UART ISR dequeues one outgoing byte and writes it to `base+0` when this bit is set. *(Corrected in the second pass; this and `0x02` were previously swapped.)*
+- Status bit `0x02`: receive data available; the MIDI-in ISR drains `base+0` while it is set.
+- Status bit `0x04`: transmitter empty, polled by `WaitTX`.
+- Every command write is followed by a 36 µs wait (`WaitMicroSeconds(0x24)`).
 - Status mask `0x38`: error/exception conditions. Reading such a status makes the driver set control bit `0x10`, apparently to acknowledge or clear the condition.
 
 ### Logical-port framing
@@ -264,7 +266,7 @@ The first synth proof of concept no longer needs to guess the basic register sha
 1. Map a sufficiently large BAR to include offsets through at least `0x3F401`.
 2. Initialize UART index 1 at `BAR + 0x3E002`, the proven SWXG transport, with `00 00 00 50 4E 10` written to `BAR + 0x3E003`.
 3. Select SWXG1 with `F5 01`, then transmit a complete status-bearing MIDI message such as Note On.
-4. Enable TX with control bit `0x01`, feed bytes when status bit `0x02` is asserted, and acknowledge `0x38` conditions with control bit `0x10` as the original does.
+4. Enable TX with control bit `0x01`, feed bytes when status bit `0x01` is asserted, mask the TX interrupt when the queue is empty, and acknowledge `0x38` conditions with control bit `0x10` as the original does. Wait 36 µs after each command byte, and do not send the first SWXG byte until 10 s after DSP reset release (Yamaha's `WaitH8`).
 5. Add SWXG2 with `F5 02`; reserve `F5 03` for the control endpoint.
 6. Implement running-status restoration and the 100-operation selector refresh only after straightforward status-complete messages work.
 
@@ -343,11 +345,11 @@ CAdapterSW1000::Init
 
 The driver maintains software shadows of `PORT0`, `PORT1`, and the interrupt mask. Changes are serialized and then written as complete 32-bit values.
 
-`PORT1` bit 31 is used by the driver's global interrupt mask/unmask operation. Bits 16–17 select a clock/sample-rate mode; the corresponding cached rates are 48,000 Hz, 44,100 Hz, or 32,000 Hz. A synth-only implementation should initially preserve the exact original `PORT1` programming instead of choosing a rate independently.
+`PORT1` bit 31 is the global interrupt unmask: `IrqUnMask` sets it and `IrqMask` clears it. Bits 16–17 select a clock/sample-rate mode; the corresponding cached rates are 48,000 Hz, 44,100 Hz, or 32,000 Hz. A synth-only implementation should initially preserve the exact original `PORT1` programming instead of choosing a rate independently.
 
 ### Interrupt programming
 
-The driver treats `0x3FF04` as both the interrupt-status source and the programmed interrupt mask/acknowledge target:
+The driver reads `0x3FF04` as interrupt status and writes it as the enable mask. No path writes it to acknowledge a cause; causes clear when serviced or masked (see [power-interrupt-uart-findings.md](power-interrupt-uart-findings.md)):
 
 - `SetTRPIF(mask)` updates the software shadow and writes the full 32-bit value to `BAR + 0x3FF04` through `IInterruptSync` when available.
 - `IrqEnable(bit)` sets `1 << bit`; `IrqDisable(bit)` clears it.
@@ -364,7 +366,7 @@ The original driver unconditionally invokes `InitDSP` from its reset path before
 - A first faithful prototype should reproduce the original DSP initialization rather than omit it.
 - A later controlled experiment may determine that a smaller subset is sufficient, but static evidence does not currently justify that assumption.
 
-The next reverse-engineering unit is therefore `CAdapterCommon::InitDSP` and its `initMprDsp`/`SendDSP`/`SendMpr` helpers: identify which embedded tables are sent during ordinary SW1000 startup, their destination addresses, ordering, completion/status polling, and whether any branch is specific to PCM/ASIO rather than baseline synthesis.
+*Update:* this unit has been traced; see `loader-protocol.md` and [power-interrupt-uart-findings.md](power-interrupt-uart-findings.md), which also cover power management and the H8 boot wait. The original next step read: the next reverse-engineering unit is therefore `CAdapterCommon::InitDSP` and its `initMprDsp`/`SendDSP`/`SendMpr` helpers: identify which embedded tables are sent during ordinary SW1000 startup, their destination addresses, ordering, completion/status polling, and whether any branch is specific to PCM/ASIO rather than baseline synthesis.
 
 ### Findings from independent documentation
 

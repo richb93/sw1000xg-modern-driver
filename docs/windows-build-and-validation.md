@@ -74,7 +74,7 @@ Expected success criteria:
 1. `EvtDevicePrepareHardware` locates exactly one suitable memory resource.
 2. The BAR maps successfully as non-cached memory.
 3. `EvtDeviceD0Entry` writes `TRPIF=0` before startup begins.
-4. Both 10 ms and 44 ms waits occur at PASSIVE_LEVEL.
+4. Both the 10 ms and 1 ms waits occur at PASSIVE_LEVEL.
 5. Every DSP busy poll completes before its bound.
 6. Startup returns success and the machine remains responsive.
 7. Disable/uninstall invokes `EvtDeviceD0Exit`, which writes `TRPIF=0`, and
@@ -110,11 +110,17 @@ user mode. Compare the captured sequence mechanically with
 Only after repeatable initialization:
 
 1. Add UART1 at `BAR+0x3E002` and its command byte at `+1`.
-2. Program command sequence `00 00 00 50 4E 10`.
-3. Implement interrupt bit 26 and a bounded 8192-byte transmit queue.
-4. Add Yamaha logical selector `F5 01` for SWXG1.
-5. Replace or extend the diagnostic wrapper with a PortCls MIDI render miniport.
-6. Test complete status-bearing Note On/Off messages before running status or
+2. Program command sequence `00 00 00 50 4E 10`, waiting 36 µs after each
+   byte, then enable TX with `0x11`.
+3. Implement interrupt bit 26 and a bounded 8192-byte transmit queue. Status
+   bit `0x01` means transmit-ready; mask bit 26 in `TRPIF` whenever the queue
+   is empty, because the original never acknowledges it any other way.
+4. Wait until at least 10 s after DSP reset release (`SWXG_H8_BOOT_MS`)
+   before the first SWXG byte. Yamaha's driver blocks stream creation for this
+   long while the XG section boots.
+5. Add Yamaha logical selector `F5 01` for SWXG1.
+6. Replace or extend the diagnostic wrapper with a PortCls MIDI render miniport.
+7. Test complete status-bearing Note On/Off messages before running status or
    long SysEx.
 
 First intended transaction:

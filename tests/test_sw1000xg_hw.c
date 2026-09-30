@@ -145,22 +145,56 @@ static void test_complete_startup(void)
 {
     static const uint8_t global[18] = {0};
     static const uint32_t words[0x140] = {0};
+    static const uint16_t mpr_words[11] = {
+        0x140, 0x140, 0x140, 0x140, 0x0A0, 0x140,
+        0x140, 0x040, 0x006, 0x020, 0x040
+    };
+    uint32_t expected[128];
+    size_t expected_count = 0;
+    size_t commit = 0;
     fake_mmio fake = {0};
     swxg_device device = make_device(&fake);
     swxg_startup_assets assets = {0};
     size_t i;
+    uint32_t done;
     for (i = 0; i < 5; ++i) assets.global_records[i] = global;
     for (i = 0; i < 11; ++i) assets.mpr[i] = words;
-    assets.bootstrap_zero_a = words;
-    assets.bootstrap_zero_b = words;
     assets.cescr = words;
     assert(swxg_startup(&device, &assets) == SWXG_OK);
     assert(fake.delay_count == 2);
-    assert(fake.delays[0] == 10 && fake.delays[1] == 44);
+    assert(fake.delays[0] == 10 && fake.delays[1] == 1);
     assert(fake.events[0].offset == SWXG_PORT0);
     assert(fake.events[0].value == 0x00000080);
     assert(fake.events[1].offset == SWXG_PORT1);
     assert(fake.events[1].value == 0x11A18000);
+
+    /* Every DSP window-0 commit, in order: (destination << 16) | selector. */
+    expected[expected_count++] = 0x00400700;          /* n1mod0KeyOn */
+    for (i = 0; i < 11; ++i)
+        for (done = 0; done < mpr_words[i]; done += 32) {
+            assert(expected_count < sizeof(expected) / sizeof(expected[0]));
+            expected[expected_count++] = (done << 16) | ((uint32_t)i << 8);
+        }
+    expected[expected_count++] = 0x00400700;          /* n1mod0KeyOnOff */
+    expected[expected_count++] = 0x00000800;          /* CESCR */
+    expected[expected_count++] = 0xC1000F00;          /* TRWF */
+    expected[expected_count++] = 0xC1010F00;          /* TRWFO */
+    expected[expected_count++] = 0x00E00100;          /* dspSetRun(1) */
+    for (i = 0; i < fake.count; ++i) {
+        assert(fake.events[i].value != 0x147F0020);   /* 16-bit run path */
+        if (fake.events[i].offset != SWXG_DSP0 + 0x84)
+            continue;
+        assert(commit < expected_count);
+        assert(fake.events[i].value == expected[commit]);
+        if (commit == 0 || commit == expected_count - 5) {
+            /* Single-word key writes: data 0xFFFF, then 0. */
+            assert(fake.events[i - 2].offset == SWXG_DSP0);
+            assert(fake.events[i - 2].value == (commit == 0 ? 0xFFFFu : 0));
+        }
+        ++commit;
+    }
+    assert(commit == expected_count);
+
     assert(fake.events[fake.count - 1].offset == SWXG_TRPIF);
     assert(fake.events[fake.count - 1].value == 0);
     assert(device.port1_shadow ==

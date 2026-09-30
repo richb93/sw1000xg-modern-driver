@@ -9,9 +9,14 @@ future clean driver unless explicitly identified as Yamaha symbols.
 
 Synth-first startup does **not** upload the large `dsp000`/`deq000` effect
 images. Yamaha's ordinary reset path loads a smaller baseline: eleven MPR
-arrays, five global-register records, two 64-word bootstrap buffers, and a six-word
-SW1000-specific CESCR block. The large images belong to later DSP/ASIO
-configuration.
+arrays, five global-register records, a six-word SW1000-specific CESCR block,
+and two single-word module-0 key writes. The large images belong to later
+DSP/ASIO configuration.
+
+A second, symbol-guided pass corrected the MPR and CESCR target selectors, the
+key writes (previously read as 64-word "bootstrap" buffers), the reset hold
+time and the run write. The evidence is in
+[power-interrupt-uart-findings.md](power-interrupt-uart-findings.md).
 
 Payload words are copied as native little-endian 32-bit values. There is no byte
 swap, decompression, payload relocation, checksum, or executable mapping on the
@@ -36,16 +41,19 @@ For `(dsp_index, destination, count, words)`:
 1. Set `chunk = min(count, 32)`.
 2. Copy `chunk` 32-bit words to `window+0x00`, `+0x04`, and so on.
 3. Write `((chunk << 16) | (destination >> 16))` to `window+0x80`.
-4. Write `((destination << 16) | dsp_index)` to `window+0x84` to commit.
+4. Write `((destination << 16) | target_selector)` to `window+0x84` to commit.
 5. Advance destination and source by `chunk`, and repeat.
 
-The ordinary baseline uses `dsp_index = 0`. A clean driver must retain a bounded
+The ordinary baseline uses window 0. The low 16 bits of the commit word are a
+target selector (`SendDSP`'s second argument), not the window index; the MPR
+slots, CESCR and the key/run writes each use their own selector. A clean driver must retain a bounded
 poll and return a real error rather than spinning forever in kernel mode.
 
 ## Baseline MPR sequence
 
 Normal startup selects bank 0 of the SW1000-specific pointer table. `SendMpr`
-submits these slots through window 0 with destination zero:
+submits slot *i* through window 0 with target selector `i << 8` and
+destination zero:
 
 | Order | File | Words | Bytes |
 |---:|---|---:|---:|
@@ -61,9 +69,9 @@ submits these slots through window 0 with destination zero:
 | 9 | `mpr_09.bin` | `0x020` | `0x080` |
 | 10 | `mpr_10.bin` | `0x040` | `0x100` |
 
-Repeated destination zero is intentional. These appear to be distinct,
-sequence-sensitive MPR classes interpreted by the board, not pieces of one
-linear firmware image.
+Repeated destination zero is intentional: each slot is addressed by its own
+selector (`0x000` to `0xA00`), so these are distinct MPR classes, not pieces of
+one linear firmware image.
 
 ## Ordinary non-ASIO ordering
 
@@ -84,23 +92,25 @@ The recovered `dspInitMprOnly(1)` path is:
 
 1. Acquire the adapter lock and assert master mute.
 2. Assert DSP reset (`NResDSP0 = 0`).
-3. Stall for 44 ms.
+3. Stall for 44 µs (`KeStallExecutionProcessor(0x2C)`).
 4. Release DSP reset (`NResDSP0 = 1`).
 5. Clear the initial performance-counter timestamp.
 6. Clear the top two cached `PORT1` bits and write the result to `BAR+0x3FF10`.
 7. Apply `global_register_00.bin` through `global_register_04.bin`, in order,
    through the global-register helper.
-8. Upload `bootstrap_zero_a.bin`: window 0, destination `0x700`, 64 words.
-9. Send MPR slots 0 through 10, stopping on the first failure.
-10. Upload `bootstrap_zero_b.bin`: window 0, destination `0x700`, 64 words.
-11. Upload `cescr.bin`: window 0, destination `0x800`, 6 words.
+8. `SetDSP(window 0, selector 0x700, destination 0x40, 0x0000FFFF)`
+   (`n1mod0KeyOn`).
+9. Send MPR slots 0 through 10 (selector `i << 8`), stopping on the first
+   failure.
+10. `SetDSP(window 0, selector 0x700, destination 0x40, 0)` (`n1mod0KeyOnOff`).
+11. Upload `cescr.bin`: window 0, selector `0x800`, destination 0, 6 words.
 12. Set `TRWF` to zero, then clear `TRWFO`.
 13. Clear `PORT1` bit 25 and set DSP run state.
 14. Release the lock.
 
-The bootstrap buffers overlap by 63 words in the original image. The second
-begins one dword earlier. Preserve that distinction instead of deduplicating
-them.
+The earlier reading of steps 8 and 10 as two overlapping 64-word uploads to
+destination `0x700` was wrong. `n1mod0KeyOn` and `n1mod0KeyOnOff` are adjacent
+32-bit globals, not arrays.
 
 ## Global-register record
 
@@ -156,7 +166,8 @@ operation.
 ## Remaining boundary
 
 The SW1000 `SendCESCR` hook is no longer opaque: it is exactly one six-word
-transfer from `cescr.bin` to destination `0x800` through DSP window 0. There is
+transfer from `cescr.bin` to selector `0x800`, destination 0, through DSP
+window 0. There is
 no separate post-bootstrap callback; the previously unidentified virtual slot is
 `SendCESCR` itself.
 
@@ -164,11 +175,11 @@ no separate post-bootstrap callback; the previously unidentified virtual slot is
 and `0xC101`; their startup values are both zero and are written through the
 same synchronized, busy-polled RAM accessor.
 
-`dspSetRun(1)` uses two single-value writes through DSP window 0. Yamaha's API
-keeps the low 16-bit target selector separate from the destination address: the
-first writes `0x40000000` with target `0x100`, destination `0xE0`; the second
-writes `0x147F0020` with target `0x700`, destination `0x0F`. The off-state
-values are zero and `0x14000020`. `PORT1` is initialized to zero by
+`dspSetRun(1)` writes `0x40000000` with target `0x100`, destination `0xE0`,
+through DSP window 0 (off-state value zero). `dspInitMprOnly` forces the 32-bit
+MPR flag on, so this single write is the whole run step. The second write
+(`0x147F0020` at target `0x700`, destination `0x0F`) belongs to `SetRun16`,
+which the ordinary SW1000 path does not reach. `PORT1` is initialized to zero by
 `CAdapterCommon::Init`; later changes update its cached full 32-bit value and
 rewrite `BAR+0x3FF10`.
 

@@ -17,10 +17,8 @@ typedef struct swxg_io {
 
 typedef struct swxg_startup_assets {
     const uint8_t *global_records[5];       /* 18 bytes each */
-    const uint32_t *bootstrap_zero_a;       /* 64 words */
-    const uint32_t *mpr[11];
-    const uint32_t *bootstrap_zero_b;       /* 64 words */
-    const uint32_t *cescr;                  /* 6 words */
+    const uint32_t *mpr[11];                /* slot i uses selector i << 8 */
+    const uint32_t *cescr;                  /* 6 words, selector 0x800 */
 } swxg_startup_assets;
 
 typedef struct swxg_device {
@@ -43,8 +41,13 @@ enum {
     SWXG_DSP_BUSY = 0x80000000u,
     SWXG_PORT1_DIT_DATA = 1u << 27,
     SWXG_PORT1_DIT_LATCH = 1u << 28,
-    SWXG_PORT1_DIT_CLOCK = 1u << 29
+    SWXG_PORT1_DIT_CLOCK = 1u << 29,
+    SWXG_PORT1_IRQ_UNMASK = 1u << 31
 };
+
+/* Yamaha's WaitH8 blocks the first SWXG render stream until this long after
+ * DSP reset is released, presumably while the XG section's H8 MCU boots. */
+enum { SWXG_H8_BOOT_MS = 10000 };
 
 void swxg_init(swxg_device *device, swxg_io io);
 void swxg_write_port1(swxg_device *device, uint32_t value);

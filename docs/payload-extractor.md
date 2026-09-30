@@ -32,7 +32,9 @@ It also extracts the SW1000/DS2416 MPR pointer tables and four auxiliary RAM/tim
 
 The `sw1000_startup` group contains the assets actually used by ordinary
 non-ASIO SW1000XG reset: five global-register records, eleven baseline MPR
-transfers, and two deliberately overlapping 64-word bootstrap buffers. Their
+transfers, and the six-word CESCR block. (Earlier versions also extracted two
+64-word "bootstrap" regions; those were two single-word constants and are no
+longer extracted.) Their
 exact transfer order and register protocol are documented in
 `loader-protocol.md` in this documentation directory.
 

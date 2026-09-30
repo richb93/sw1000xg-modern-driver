@@ -170,9 +170,7 @@ int swxg_startup(swxg_device *device, const swxg_startup_assets *assets)
     };
     size_t i;
     int result;
-    if (!device || !assets || !device->io.delay_ms ||
-        !assets->bootstrap_zero_a || !assets->bootstrap_zero_b ||
-        !assets->cescr)
+    if (!device || !assets || !device->io.delay_ms || !assets->cescr)
         return SWXG_INVALID_ARGUMENT;
     for (i = 0; i < 5; ++i)
         if (!assets->global_records[i]) return SWXG_INVALID_ARGUMENT;
@@ -185,34 +183,34 @@ int swxg_startup(swxg_device *device, const swxg_startup_assets *assets)
 
     swxg_set_port1_bit(device, 1u << 25, 1); /* SetMute(1) */
     swxg_set_port1_bit(device, 1u << 23, 0); /* NResDSP0 = 0 */
-    device->io.delay_ms(device->io.context, 44);
+    /* Yamaha stalls 44 us; 1 ms is the shortest delay this interface has. */
+    device->io.delay_ms(device->io.context, 1);
     swxg_set_port1_bit(device, 1u << 23, 1); /* NResDSP0 = 1 */
     swxg_write_port1(device, device->port1_shadow & 0x3FFFFFFFu);
 
     for (i = 0; i < 5; ++i)
         swxg_write_global_record(device, (uint16_t)i,
                                  assets->global_records[i]);
-    result = swxg_dsp_send_words_ex(device, 0, 0, 0x700,
-                                    assets->bootstrap_zero_a, 64);
+    /* n1mod0KeyOn: module 0 (selector 0x700) register 0x40. */
+    result = swxg_dsp_set_word_ex(device, 0, 0x700, 0x40, 0x0000FFFFu);
     if (result != SWXG_OK) return result;
     for (i = 0; i < 11; ++i) {
-        result = swxg_dsp_send_words_ex(device, 0, 0, 0,
+        result = swxg_dsp_send_words_ex(device, 0, (uint16_t)(i << 8), 0,
                                         assets->mpr[i], mpr_words[i]);
         if (result != SWXG_OK) return result;
     }
-    result = swxg_dsp_send_words_ex(device, 0, 0, 0x700,
-                                    assets->bootstrap_zero_b, 64);
+    /* n1mod0KeyOnOff */
+    result = swxg_dsp_set_word_ex(device, 0, 0x700, 0x40, 0);
     if (result != SWXG_OK) return result;
-    result = swxg_dsp_send_words_ex(device, 0, 0, 0x800, assets->cescr, 6);
+    result = swxg_dsp_send_words_ex(device, 0, 0x800, 0, assets->cescr, 6);
     if (result != SWXG_OK) return result;
-    result = swxg_set_ram(device, 0xC100, 0);
+    result = swxg_set_ram(device, 0xC100, 0); /* TRWF */
     if (result != SWXG_OK) return result;
-    result = swxg_set_ram(device, 0xC101, 0);
+    result = swxg_set_ram(device, 0xC101, 0); /* TRWFO */
     if (result != SWXG_OK) return result;
     swxg_set_port1_bit(device, 1u << 25, 0);
+    /* dspSetRun(1), 32-bit MPR path. */
     result = swxg_dsp_set_word_ex(device, 0, 0x100, 0xE0, 0x40000000);
-    if (result != SWXG_OK) return result;
-    result = swxg_dsp_set_word_ex(device, 0, 0x700, 0x0F, 0x147F0020);
     if (result != SWXG_OK) return result;
 
     swxg_write_port1(device, 0xD1A18000u);

@@ -66,3 +66,4 @@ match the documented recipe.
 - [DSP/MPR loader protocol](docs/loader-protocol.md)
 - [Machine-readable startup recipe](docs/startup-recipe.json)
 - [Diagnostic-driver design](docs/kmdf-diagnostic-driver.md)
+- [Power, interrupt, UART and startup findings](docs/power-interrupt-uart-findings.md)
