@@ -67,3 +67,4 @@ match the documented recipe.
 - [Machine-readable startup recipe](docs/startup-recipe.json)
 - [Diagnostic-driver design](docs/kmdf-diagnostic-driver.md)
 - [Power, interrupt, UART and startup findings](docs/power-interrupt-uart-findings.md)
+- [PCM audio path and mixer](docs/pcm-path.md)

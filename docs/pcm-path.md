@@ -27,16 +27,15 @@ scope here.
 
 ## Channels and endpoints
 
-- The hardware schedules **16 playback DSP channels (8 pairs)** and **8 record
-  channels (4 pairs)**. The ISR (`0x1E778`) walks 8 playback pairs, then the
-  record pairs. Each channel record (`_WaveInfo`) is 0x44 bytes, and a pair
-  (left/right) is 0x88.
+- The ISR (`0x1E778`) walks up to 8 playback channel pairs, then the record
+  pairs (count held by the adapter). Each channel record (`_WaveInfo`) is 0x44
+  bytes, and a pair (left/right) is 0x88.
 - A stereo stream uses both channels of a pair. A mono stream uses one.
 - The SW1000XG INF exposes 6 stereo playback endpoints (`WAVEOUT1–6`) and 2
   stereo capture endpoints (`WAVEIN1–2`).
-- Each channel record holds its `TRPIF` bit mask. The per-channel interrupt
-  bits are the causes below bit 24 (UARTs use 24–27). *The exact
-  channel-to-bit numbering is not yet tabulated.*
+- **A DSP channel's `TRPIF` bit is its channel number *n*.** `startTX`
+  (`0x3465C`) calls `TrwEnable(n)` and `IrqEnable(n)`. PCM causes therefore
+  sit below bit 24, and the UARTs use 24–27.
 
 ## DSP RAM map (per channel *n*)
 
@@ -53,7 +52,7 @@ All accessed with `SetRAM`/`GetRAM` (`SyncSetRAM` `0x1F71A`, `SyncGetRAM`
 | `0xC0A0+n` | `APP` | Playback parameter, cleared to 0 before a synchronised start | `SetAPP`, `WaveOutSyncStart` |
 | `0xC0B0+n` | `ARP` | Record counterpart of `APP` | `SetARP` |
 | `0xC100` | `TRWF` | Transfer-enable **bitmask**, bit *n* per channel (shadow at adapter `+0x168`) | `TrwEnable`/`TrwDisable` |
-| `0xC101` | `TRWFO` | Transfer-enable acknowledge/"off" state; `waitTRWFO` polls it before starting | `WaveOutSyncStandby` |
+| `0xC101` | `TRWFO` | Transfer-enable acknowledge. `waitTRWFO` (`0x3462E`) polls bit *n* up to 0xFFFF times before a start, and continues silently if it never sets | `WaveOutSyncStandby` |
 | `0xC102` | `SUSF` | Unresolved | `SetSUSF` |
 
 DSP-window (selector `0x100`) values used by the PCM path:
@@ -110,8 +109,8 @@ be physically contiguous and below 4 GiB.**
 `SetPlayMode` (`0x33BDC`) programs the pair's DSP routing with:
 
 1. `SendDSP(0, sel 0x000, dest 0x31 + 2p, 2 words)`, where the values are
-   `GetPlayFactor() × p + 0x21041` and `… + 0x21040`, with `+0x100`
-   adjustments for mono or 16-bit;
+   `GetPlayFactor() × p + 0x21041` and `… + 0x21040`. For stereo, `+0x100`
+   is added to the first word (32-bit) or the second word (16-bit);
 2. `SetDSP(0, sel 0x500, dest 0x12 + 4p, 0x50000201 + (p << 24) [+0xFE80 if 32-bit])`;
 3. `SendDSP(0, sel 0x300, dest 0x11 + 4p, 4 words)` from table `0x234D0`, or
    `0x234E0` for 32-bit stereo;
@@ -143,8 +142,9 @@ validated setting applied only while no stream is running.
 ## Start, stop and position
 
 - `WaveStart` → `playStart`/`recStart`. When the adapter is in synchronised
-  mode, pending channels are put in standby (`startTX` sets the `TRWF` bit,
-  and `waitTRWFO` waits for the DSP's acknowledge). All pending pairs are then
+  mode, pending channels are put in standby (`startTX` sets the
+  channel's `TRWF` bit and enables its interrupt, then `waitTRWFO` waits for
+  the DSP's acknowledge). All pending pairs are then
   given a common `PSCPEC` start count, `SCR + standby offset`, with `APP`
   cleared for the second channel of a stereo pair.
 - `WaveStop` → `playStop`/`recStop`, then `WaveDmaRegResetCore` (pointers back
@@ -206,14 +206,14 @@ resume. The topology miniport maps volumes through a 128-entry `volTable`
 4. **Mixer through MIDI.** Topology volume/mute must queue XG SysEx on SWXG1
    after the H8 wait, and must not interleave inside a client's SysEx on the
    same port (the original serialises through `CMidiOut`).
-5. **Order of work.** MIDI stays first. PCM needs, in order: per-channel
-   interrupt bits, `SetPlayMode` tables captured as data, a single stereo
+5. **Order of work.** MIDI stays first. PCM needs, in order: the endpoint →
+   DSP-channel assignment, `SetPlayMode` tables captured as data, a single stereo
    16-bit 44.1 kHz render stream, then capture and multiple streams.
 
 ## Open items
 
-- Exact `TRPIF` bit for each DSP channel. Where `_WaveInfo +0x10` is
-  initialised has not been traced yet.
+- Which DSP channel numbers the SW1000 assigns to each endpoint (the
+  `_WaveInfo +8` values).
 - `TWRP`, `SUSF`, `APF`/`ARF` semantics, and `GetPlayFactor` for the SW1000.
 - Content of the `SetPlayMode`/`SetRecMode` tables (`0x234D0`–`0x2352C`,
   small Yamaha constants; extract with the other assets).
