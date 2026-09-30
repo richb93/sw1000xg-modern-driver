@@ -39,11 +39,13 @@
     <ClCompile Include="driver.c" />
     <ClCompile Include="..\hardware\sw1000xg_hw.c" />
     <ClCompile Include="..\hardware\sw1000xg_trace.c" />
+    <ClCompile Include="..\hardware\sw1000xg_uart.c" />
     <ClCompile Include="sw1000xg_assets.generated.c" Condition="Exists('sw1000xg_assets.generated.c')" />
     <ClCompile Include="sw1000xg_assets.placeholder.c" Condition="!Exists('sw1000xg_assets.generated.c')" />
     <ClInclude Include="sw1000xg_assets.generated.h" />
     <ClInclude Include="..\hardware\sw1000xg_hw.h" />
     <ClInclude Include="..\hardware\sw1000xg_trace.h" />
+    <ClInclude Include="..\hardware\sw1000xg_uart.h" />
     <Inf Include="sw1000xg_diag.inf" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

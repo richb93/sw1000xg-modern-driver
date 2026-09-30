@@ -36,7 +36,7 @@ static void fake_delay(void *context, uint32_t milliseconds)
 static swxg_device make_device(fake_mmio *fake)
 {
     swxg_device device;
-    swxg_io io = {fake, fake_read, fake_write, fake_delay};
+    swxg_io io = {fake, fake_read, fake_write, fake_delay, 0, 0, 0};
     swxg_init(&device, io);
     return device;
 }
@@ -218,7 +218,7 @@ static uint32_t countdown_read(void *context, uint32_t offset)
 static void test_trace(void)
 {
     fake_mmio fake = {0};
-    swxg_io inner = {&fake, countdown_read, fake_write, fake_delay};
+    swxg_io inner = {&fake, countdown_read, fake_write, fake_delay, 0, 0, 0};
     swxg_trace_entry entries[4];
     swxg_trace trace;
     swxg_device device;

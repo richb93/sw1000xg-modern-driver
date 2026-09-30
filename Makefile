@@ -2,14 +2,20 @@ CC ?= cc
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror
 BUILD_DIR := build
 TEST_BIN := $(BUILD_DIR)/test_sw1000xg_hw
+UART_BIN := $(BUILD_DIR)/test_sw1000xg_uart
 TRACE_BIN := $(BUILD_DIR)/trace_startup
 TRACE_OUT := $(BUILD_DIR)/startup-trace.txt
-CORE := src/hardware/sw1000xg_hw.c src/hardware/sw1000xg_trace.c
+CORE := src/hardware/sw1000xg_hw.c src/hardware/sw1000xg_trace.c \
+	src/hardware/sw1000xg_uart.c
 
 .PHONY: all test trace-check clean
 all: test
 
 $(TEST_BIN): $(CORE) tests/test_sw1000xg_hw.c
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) $^ -o $@
+
+$(UART_BIN): $(CORE) tests/test_sw1000xg_uart.c
 	mkdir -p $(BUILD_DIR)
 	$(CC) $(CFLAGS) $^ -o $@
 
@@ -28,8 +34,9 @@ trace-check: $(TRACE_BIN)
 	! cmp -s $(TRACE_OUT) $(TRACE_OUT).bad
 	! python3 tools/recipe_trace.py compare $(TRACE_OUT).bad > /dev/null
 
-test: $(TEST_BIN) trace-check
+test: $(TEST_BIN) $(UART_BIN) trace-check
 	./$(TEST_BIN)
+	./$(UART_BIN)
 	python3 -m json.tool docs/startup-recipe.json >/dev/null
 	python3 -m py_compile tools/extract_yswds.py tools/generate_assets.py tools/recipe_trace.py
 

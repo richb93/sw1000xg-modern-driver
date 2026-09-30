@@ -29,7 +29,7 @@ static void ignore_delay(void *context, uint32_t milliseconds)
 int main(void)
 {
     static swxg_trace_entry entries[8192];
-    swxg_io bar = {0, idle_read, ignore_write, ignore_delay};
+    swxg_io bar = {0, idle_read, ignore_write, ignore_delay, 0, 0, 0};
     swxg_trace trace;
     swxg_device device;
     size_t i;
@@ -46,8 +46,16 @@ int main(void)
         else if (e->kind == SWXG_TRACE_READ)
             printf("SWXG R %05X %08X %u\n", (unsigned)e->offset,
                    (unsigned)e->value, (unsigned)e->repeat);
-        else
+        else if (e->kind == SWXG_TRACE_DELAY)
             printf("SWXG D %u\n", (unsigned)e->value);
+        else if (e->kind == SWXG_TRACE_WRITE8)
+            printf("SWXG W8 %05X %02X\n", (unsigned)e->offset,
+                   (unsigned)e->value);
+        else if (e->kind == SWXG_TRACE_READ8)
+            printf("SWXG R8 %05X %02X %u\n", (unsigned)e->offset,
+                   (unsigned)e->value, (unsigned)e->repeat);
+        else
+            printf("SWXG U %u\n", (unsigned)e->value);
     }
     printf("SWXG END %d %u\n", result, (unsigned)trace.dropped);
     return result == SWXG_OK && trace.dropped == 0 ? 0 : 1;

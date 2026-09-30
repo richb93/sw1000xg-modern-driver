@@ -55,7 +55,7 @@ safe way to validate startup on new hardware and reuses the same core.
 |---|---|---|---|
 | Register protocol, startup, DSP window, `SetRAM` | `src/hardware/sw1000xg_hw.*` | yes | yes (fake BAR) |
 | MMIO trace | `src/hardware/sw1000xg_trace.*` | yes | yes |
-| UART channel: init, TX queue, ISR service, `F5` framing, running status | `src/hardware/sw1000xg_uart.*` (next) | yes | yes |
+| UART channel: init, TX/RX rings, ISR service, polled TX, `F5` framing, running status | `src/hardware/sw1000xg_uart.*` | yes | yes |
 | PCM channel programming: buffer registers, `SetPlayMode` tables | `src/hardware/sw1000xg_pcm.*` (later) | yes | yes |
 | Adapter, ISR, power, PortCls glue | `src/portcls/` (new) | no | Windows only |
 | Bring-up initializer | `src/kmdf/` (existing) | no | Windows only |

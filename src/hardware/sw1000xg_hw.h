@@ -7,12 +7,19 @@
 typedef uint32_t (*swxg_read32_fn)(void *context, uint32_t offset);
 typedef void (*swxg_write32_fn)(void *context, uint32_t offset, uint32_t value);
 typedef void (*swxg_delay_ms_fn)(void *context, uint32_t milliseconds);
+typedef uint8_t (*swxg_read8_fn)(void *context, uint32_t offset);
+typedef void (*swxg_write8_fn)(void *context, uint32_t offset, uint8_t value);
+typedef void (*swxg_delay_us_fn)(void *context, uint32_t microseconds);
 
 typedef struct swxg_io {
     void *context;
     swxg_read32_fn read32;
     swxg_write32_fn write32;
     swxg_delay_ms_fn delay_ms;
+    /* Optional; required only by the UART layer. */
+    swxg_read8_fn read8;
+    swxg_write8_fn write8;
+    swxg_delay_us_fn delay_us;
 } swxg_io;
 
 typedef struct swxg_startup_assets {
@@ -24,13 +31,15 @@ typedef struct swxg_startup_assets {
 typedef struct swxg_device {
     swxg_io io;
     uint32_t port1_shadow;
+    uint32_t trpif_shadow;          /* interrupt enable mask */
     uint32_t poll_limit;
 } swxg_device;
 
 enum {
     SWXG_OK = 0,
     SWXG_INVALID_ARGUMENT = -1,
-    SWXG_TIMEOUT = -2
+    SWXG_TIMEOUT = -2,
+    SWXG_QUEUE_FULL = -3
 };
 
 enum {
@@ -68,5 +77,7 @@ void swxg_dit_write(swxg_device *device, uint8_t mode, uint32_t value);
 void swxg_write_global_record(swxg_device *device, uint16_t dsp_index,
                               const uint8_t record[18]);
 int swxg_startup(swxg_device *device, const swxg_startup_assets *assets);
+/* Sets or clears one TRPIF enable bit and writes the whole mask. */
+void swxg_irq_set(swxg_device *device, uint32_t bit, int enabled);
 
 #endif

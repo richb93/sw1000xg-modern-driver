@@ -24,6 +24,7 @@ void swxg_init(swxg_device *device, swxg_io io)
 {
     device->io = io;
     device->port1_shadow = 0;
+    device->trpif_shadow = 0;
     device->poll_limit = 0xFFFFFu;
 }
 
@@ -217,6 +218,18 @@ int swxg_startup(swxg_device *device, const swxg_startup_assets *assets)
     swxg_dit_write(device, 0, 0x0204);
     swxg_dit_write(device, 1, 0x0008);
     swxg_dit_write(device, 2, 0x0000);
+    device->trpif_shadow = 0;
     device->io.write32(device->io.context, SWXG_TRPIF, 0);
     return SWXG_OK;
+}
+
+void swxg_irq_set(swxg_device *device, uint32_t bit, int enabled)
+{
+    if (!device || bit > 31)
+        return;
+    if (enabled)
+        device->trpif_shadow |= 1u << bit;
+    else
+        device->trpif_shadow &= ~(1u << bit);
+    device->io.write32(device->io.context, SWXG_TRPIF, device->trpif_shadow);
 }

@@ -45,6 +45,29 @@ static void CoreWrite32(void *opaque, uint32_t offset, uint32_t value)
     WRITE_REGISTER_ULONG((volatile ULONG *)(context->Registers + offset), value);
 }
 
+static uint8_t CoreRead8(void *opaque, uint32_t offset)
+{
+    PDEVICE_CONTEXT context = opaque;
+    NT_ASSERT(context->Registers != NULL);
+    NT_ASSERT(offset < context->RegisterLength);
+    return READ_REGISTER_UCHAR(context->Registers + offset);
+}
+
+static void CoreWrite8(void *opaque, uint32_t offset, uint8_t value)
+{
+    PDEVICE_CONTEXT context = opaque;
+    NT_ASSERT(context->Registers != NULL);
+    NT_ASSERT(offset < context->RegisterLength);
+    WRITE_REGISTER_UCHAR(context->Registers + offset, value);
+}
+
+/* Busy-wait; used for the UART's 36 us command spacing. */
+static void CoreDelayUs(void *opaque, uint32_t microseconds)
+{
+    UNREFERENCED_PARAMETER(opaque);
+    KeStallExecutionProcessor(microseconds);
+}
+
 static void CoreDelayMs(void *opaque, uint32_t milliseconds)
 {
     LARGE_INTEGER interval;
@@ -69,9 +92,19 @@ static void SwxgDumpTrace(PDEVICE_CONTEXT context, int result)
             DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
                        "SWXG R %05X %08X %u\n", e->offset, e->value,
                        e->repeat);
-        else
+        else if (e->kind == SWXG_TRACE_DELAY)
             DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
                        "SWXG D %u\n", e->value);
+        else if (e->kind == SWXG_TRACE_WRITE8)
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+                       "SWXG W8 %05X %02X\n", e->offset, e->value);
+        else if (e->kind == SWXG_TRACE_READ8)
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+                       "SWXG R8 %05X %02X %u\n", e->offset, e->value,
+                       e->repeat);
+        else
+            DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL,
+                       "SWXG U %u\n", e->value);
     }
     DbgPrintEx(DPFLTR_IHVDRIVER_ID, DPFLTR_INFO_LEVEL, "SWXG END %d %u\n",
                result, (ULONG)context->Trace.dropped);
@@ -141,6 +174,9 @@ NTSTATUS SwxgEvtPrepareHardware(WDFDEVICE device, WDFCMRESLIST resourcesRaw,
     io.read32 = CoreRead32;
     io.write32 = CoreWrite32;
     io.delay_ms = CoreDelayMs;
+    io.read8 = CoreRead8;
+    io.write8 = CoreWrite8;
+    io.delay_us = CoreDelayUs;
 #if DBG
     swxg_trace_init(&context->Trace, io, context->TraceEntries,
                     SWXG_TRACE_CAPACITY);
