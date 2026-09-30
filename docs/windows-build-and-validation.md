@@ -21,8 +21,10 @@ the generated file as ignored.
 ## 2. Build
 
 Open `sw1000xg-modern-driver.sln`, select `Debug | x64`, and build. If the
-installed WDK requires a different KMDF target version, update the project and
-INF together rather than suppressing the error.
+installed WDK requires a different KMDF target version, change
+`KMDF_VERSION_MAJOR`/`KMDF_VERSION_MINOR` in the project; StampInf substitutes it
+for `$KMDFVERSION$` in the INF. The project targets KMDF 1.31, which is in-box on
+Windows 10 version 2004 and later and on Windows 11.
 
 The project uses `sw1000xg_assets.generated.c` when present. Without it, the
 placeholder builds but hardware preparation deliberately fails before startup.
@@ -71,10 +73,12 @@ Expected success criteria:
 
 1. `EvtDevicePrepareHardware` locates exactly one suitable memory resource.
 2. The BAR maps successfully as non-cached memory.
-3. Both 10 ms and 44 ms waits occur at PASSIVE_LEVEL.
-4. Every DSP busy poll completes before its bound.
-5. Startup returns success and the machine remains responsive.
-6. Disable/uninstall invokes release, writes `TRPIF=0`, and unmaps the BAR.
+3. `EvtDeviceD0Entry` writes `TRPIF=0` before startup begins.
+4. Both 10 ms and 44 ms waits occur at PASSIVE_LEVEL.
+5. Every DSP busy poll completes before its bound.
+6. Startup returns success and the machine remains responsive.
+7. Disable/uninstall invokes `EvtDeviceD0Exit`, which writes `TRPIF=0`, and
+   then `EvtDeviceReleaseHardware`, which unmaps the BAR.
 
 Do not continue after a timeout, unexpected resource length, machine-check,
 display corruption, spontaneous audio, or any write trace that differs from
@@ -87,7 +91,7 @@ After one successful start/stop, test each case separately:
 - enable, disable, and re-enable;
 - warm reboot and cold boot;
 - repeated driver update/removal;
-- sleep/resume and hibernate/resume;
+- sleep/resume and hibernate/resume (startup must run again on each D0 entry);
 - surprise removal only if the PCI test platform safely supports it;
 - Driver Verifier with relevant KMDF, pool, IRQL, I/O, and deadlock checks.
 

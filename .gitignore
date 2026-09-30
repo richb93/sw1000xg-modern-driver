@@ -1,0 +1,27 @@
+# Private Yamaha-derived data: never commit.
+src/kmdf/sw1000xg_assets.generated.c
+work/
+*.bin
+
+# Host build output
+build/
+__pycache__/
+*.pyc
+
+# Visual Studio / WDK build output
+.vs/
+x64/
+Debug/
+Release/
+*.user
+*.sys
+*.cat
+*.pdb
+*.obj
+*.tlog
+
+# Signing material
+*.cer
+*.pfx
+*.pvk
+*.spc

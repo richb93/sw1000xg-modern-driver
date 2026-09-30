@@ -13,6 +13,12 @@ PnpLockdown=1
 [Models.NTamd64]
 %DeviceName%=DeviceInstall,PCI\VEN_1073&DEV_1000
 
+[SourceDisksNames]
+1=%DiskName%,,,""
+
+[SourceDisksFiles]
+sw1000xg_diag.sys=1,,
+
 [DestinationDirs]
 DefaultDestDir=13
 
@@ -36,9 +42,10 @@ ServiceBinary=%13%\sw1000xg_diag.sys
 KmdfService=sw1000xg_diag,KmdfSection
 
 [KmdfSection]
-KmdfLibraryVersion=1.33
+KmdfLibraryVersion=$KMDFVERSION$
 
 [Strings]
 ProviderName="SW1000XG Clean Driver Project"
+DiskName="SW1000XG diagnostic installation disk"
 DeviceName="Yamaha SW1000XG diagnostic initializer"
 ServiceName="SW1000XG diagnostic initializer"

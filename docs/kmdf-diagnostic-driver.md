@@ -2,8 +2,15 @@
 
 This is the first Windows kernel wrapper around the platform-neutral hardware
 core. It claims only `PCI\VEN_1073&DEV_1000`, requires a translated memory BAR
-large enough to cover `0x3FF13`, maps it non-cached, serializes startup with a
-wait lock, and unmaps it in `EvtDeviceReleaseHardware`.
+large enough to cover `0x3FF13`, and maps it non-cached in
+`EvtDevicePrepareHardware`. Startup runs in `EvtDeviceD0Entry`, serialized with a
+wait lock, so the card is reinitialized after sleep and hibernate as well as on
+first start. `EvtDeviceD0Exit` writes `TRPIF=0` and `EvtDeviceReleaseHardware`
+unmaps the BAR.
+
+No interrupt is connected yet, so every interrupt source is kept disabled:
+`TRPIF=0` is written before startup, again if startup fails part-way, and on
+every D0 exit.
 
 It deliberately exposes no device interface, IOCTL, audio endpoint, or MIDI
 endpoint. A user-mode process cannot ask it to read or write arbitrary MMIO.

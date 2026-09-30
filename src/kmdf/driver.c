@@ -19,6 +19,8 @@ DRIVER_INITIALIZE DriverEntry;
 EVT_WDF_DRIVER_DEVICE_ADD SwxgEvtDeviceAdd;
 EVT_WDF_DEVICE_PREPARE_HARDWARE SwxgEvtPrepareHardware;
 EVT_WDF_DEVICE_RELEASE_HARDWARE SwxgEvtReleaseHardware;
+EVT_WDF_DEVICE_D0_ENTRY SwxgEvtD0Entry;
+EVT_WDF_DEVICE_D0_EXIT SwxgEvtD0Exit;
 
 static uint32_t CoreRead32(void *opaque, uint32_t offset)
 {
@@ -66,6 +68,8 @@ NTSTATUS SwxgEvtDeviceAdd(WDFDRIVER driver, PWDFDEVICE_INIT deviceInit)
     WDF_PNPPOWER_EVENT_CALLBACKS_INIT(&pnp);
     pnp.EvtDevicePrepareHardware = SwxgEvtPrepareHardware;
     pnp.EvtDeviceReleaseHardware = SwxgEvtReleaseHardware;
+    pnp.EvtDeviceD0Entry = SwxgEvtD0Entry;
+    pnp.EvtDeviceD0Exit = SwxgEvtD0Exit;
     WdfDeviceInitSetPnpPowerEventCallbacks(deviceInit, &pnp);
 
     WDF_OBJECT_ATTRIBUTES_INIT_CONTEXT_TYPE(&attributes, DEVICE_CONTEXT);
@@ -107,25 +111,49 @@ NTSTATUS SwxgEvtPrepareHardware(WDFDEVICE device, WDFCMRESLIST resourcesRaw,
     io.write32 = CoreWrite32;
     io.delay_ms = CoreDelayMs;
     swxg_init(&context->Core, io);
+    return STATUS_SUCCESS;
+}
+
+/* The card loses its DSP state in D3, so startup runs on every D0 entry,
+ * including resume from sleep and hibernate, not only on first start. */
+NTSTATUS SwxgEvtD0Entry(WDFDEVICE device, WDF_POWER_DEVICE_STATE previousState)
+{
+    PDEVICE_CONTEXT context = DeviceGetContext(device);
+    NTSTATUS status;
+    int result;
+    UNREFERENCED_PARAMETER(previousState);
+
+    if (context->Registers == NULL) return STATUS_DEVICE_NOT_READY;
 
     WdfWaitLockAcquire(context->HardwareLock, NULL);
-    status = swxg_startup(&context->Core, SwxgGetStartupAssets());
-    if (status == SWXG_OK) {
+    /* No ISR is connected: keep every interrupt source disabled. */
+    CoreWrite32(context, SWXG_TRPIF, 0);
+    result = swxg_startup(&context->Core, SwxgGetStartupAssets());
+    if (result == SWXG_OK) {
         context->Initialized = TRUE;
         status = STATUS_SUCCESS;
-    } else if (status == SWXG_TIMEOUT) {
-        status = STATUS_IO_TIMEOUT;
     } else {
-        status = STATUS_INVALID_PARAMETER;
+        /* Startup may have stopped part-way; leave interrupts disabled. */
+        CoreWrite32(context, SWXG_TRPIF, 0);
+        context->Initialized = FALSE;
+        status = result == SWXG_TIMEOUT ? STATUS_IO_TIMEOUT
+                                        : STATUS_INVALID_PARAMETER;
     }
     WdfWaitLockRelease(context->HardwareLock);
-
-    if (!NT_SUCCESS(status)) {
-        MmUnmapIoSpace(context->Registers, context->RegisterLength);
-        context->Registers = NULL;
-        context->RegisterLength = 0;
-    }
     return status;
+}
+
+NTSTATUS SwxgEvtD0Exit(WDFDEVICE device, WDF_POWER_DEVICE_STATE targetState)
+{
+    PDEVICE_CONTEXT context = DeviceGetContext(device);
+    UNREFERENCED_PARAMETER(targetState);
+    if (context->Registers != NULL) {
+        WdfWaitLockAcquire(context->HardwareLock, NULL);
+        CoreWrite32(context, SWXG_TRPIF, 0);
+        context->Initialized = FALSE;
+        WdfWaitLockRelease(context->HardwareLock);
+    }
+    return STATUS_SUCCESS;
 }
 
 NTSTATUS SwxgEvtReleaseHardware(WDFDEVICE device,
@@ -134,10 +162,6 @@ NTSTATUS SwxgEvtReleaseHardware(WDFDEVICE device,
     PDEVICE_CONTEXT context = DeviceGetContext(device);
     UNREFERENCED_PARAMETER(resourcesTranslated);
     if (context->Registers != NULL) {
-        WdfWaitLockAcquire(context->HardwareLock, NULL);
-        CoreWrite32(context, SWXG_TRPIF, 0);
-        context->Initialized = FALSE;
-        WdfWaitLockRelease(context->HardwareLock);
         MmUnmapIoSpace(context->Registers, context->RegisterLength);
         context->Registers = NULL;
         context->RegisterLength = 0;
