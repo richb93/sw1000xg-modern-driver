@@ -68,3 +68,4 @@ match the documented recipe.
 - [Diagnostic-driver design](docs/kmdf-diagnostic-driver.md)
 - [Power, interrupt, UART and startup findings](docs/power-interrupt-uart-findings.md)
 - [PCM audio path and mixer](docs/pcm-path.md)
+- [Driver architecture](docs/driver-architecture.md)
